@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Edit, Trash } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -12,28 +12,74 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
-// Temporary mock data until connected to Supabase
-const MOCK_TASKS = [
-  { id: 1, title: "Complete project proposal", status: "pending", created_at: "2023-05-19T12:00:00" },
-  { id: 2, title: "Review code changes", status: "completed", created_at: "2023-05-18T12:00:00" },
-  { id: 3, title: "Deploy to production", status: "pending", created_at: "2023-05-20T12:00:00" },
-];
+interface Task {
+  id: string;
+  title: string;
+  status: string;
+  created_at: string;
+}
 
 const TaskList = () => {
-  const [tasks, setTasks] = useState(MOCK_TASKS);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // This will be replaced with actual Supabase delete call
-  const handleDelete = (id: number) => {
-    // Remove task from local state for now
-    setTasks(tasks.filter(task => task.id !== id));
-    toast({
-      title: "Task deleted",
-      description: "The task has been successfully deleted.",
-    });
+  // Fetch tasks from Supabase
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("tasks")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        
+        setTasks(data || []);
+      } catch (error: any) {
+        toast({
+          title: "Error fetching tasks",
+          description: error.message,
+          variant: "destructive"
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTasks();
+  }, [toast]);
+
+  const handleDelete = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      setTasks(tasks.filter(task => task.id !== id));
+      
+      toast({
+        title: "Task deleted",
+        description: "The task has been successfully deleted."
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to delete task",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
   };
+
+  if (loading) {
+    return <div className="text-center py-8">Loading tasks...</div>;
+  }
 
   return (
     <div>

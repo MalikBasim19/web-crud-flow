@@ -6,13 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-
-// Temporary mock data until connected to Supabase
-const MOCK_TASKS = [
-  { id: 1, title: "Complete project proposal", status: "pending", created_at: "2023-05-19T12:00:00" },
-  { id: 2, title: "Review code changes", status: "completed", created_at: "2023-05-18T12:00:00" },
-  { id: 3, title: "Deploy to production", status: "pending", created_at: "2023-05-20T12:00:00" },
-];
+import { supabase } from "@/integrations/supabase/client";
 
 const TaskForm = () => {
   const { id } = useParams();
@@ -20,30 +14,92 @@ const TaskForm = () => {
   const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [isCompleted, setIsCompleted] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const isEditMode = !!id;
 
   useEffect(() => {
     if (isEditMode) {
-      // This will be replaced with actual Supabase fetch
-      const task = MOCK_TASKS.find(task => task.id === parseInt(id as string));
-      if (task) {
-        setTitle(task.title);
-        setIsCompleted(task.status === "completed");
-      }
-    }
-  }, [id, isEditMode]);
+      setLoading(true);
+      // Fetch the task from Supabase
+      const fetchTask = async () => {
+        const { data, error } = await supabase
+          .from("tasks")
+          .select("*")
+          .eq("id", id)
+          .single();
+        
+        if (error) {
+          toast({
+            title: "Error fetching task",
+            description: error.message,
+            variant: "destructive"
+          });
+          navigate("/");
+          return;
+        }
 
-  const handleSubmit = (e: React.FormEvent) => {
+        if (data) {
+          setTitle(data.title);
+          setIsCompleted(data.status === "completed");
+        }
+        setLoading(false);
+      };
+
+      fetchTask();
+    }
+  }, [id, isEditMode, navigate, toast]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     
-    // This will be replaced with actual Supabase create/update
-    toast({
-      title: isEditMode ? "Task updated" : "Task created",
-      description: `The task has been successfully ${isEditMode ? "updated" : "created"}.`,
-    });
+    const status = isCompleted ? "completed" : "pending";
     
-    navigate("/");
+    try {
+      if (isEditMode) {
+        // Update task in Supabase
+        const { error } = await supabase
+          .from("tasks")
+          .update({ 
+            title, 
+            status,
+            updated_at: new Date().toISOString() 
+          })
+          .eq("id", id);
+        
+        if (error) throw error;
+        
+        toast({
+          title: "Task updated",
+          description: "The task has been successfully updated."
+        });
+      } else {
+        // Create new task in Supabase
+        const { error } = await supabase
+          .from("tasks")
+          .insert([{ 
+            title, 
+            status: "pending" 
+          }]);
+        
+        if (error) throw error;
+        
+        toast({
+          title: "Task created",
+          description: "The task has been successfully created."
+        });
+      }
+      
+      navigate("/");
+    } catch (error: any) {
+      toast({
+        title: isEditMode ? "Failed to update task" : "Failed to create task",
+        description: error.message,
+        variant: "destructive"
+      });
+      setLoading(false);
+    }
   };
 
   return (
@@ -64,6 +120,7 @@ const TaskForm = () => {
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Enter task title"
                   required
+                  disabled={loading}
                 />
               </div>
               
@@ -73,16 +130,22 @@ const TaskForm = () => {
                     id="completed" 
                     checked={isCompleted} 
                     onCheckedChange={(checked) => setIsCompleted(checked === true)}
+                    disabled={loading}
                   />
                   <Label htmlFor="completed">Mark as completed</Label>
                 </div>
               )}
               
               <div className="flex justify-end space-x-4 pt-4">
-                <Button type="button" variant="outline" onClick={() => navigate("/")}>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => navigate("/")}
+                  disabled={loading}
+                >
                   Cancel
                 </Button>
-                <Button type="submit">
+                <Button type="submit" disabled={loading}>
                   {isEditMode ? "Update Task" : "Create Task"}
                 </Button>
               </div>
